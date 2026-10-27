@@ -14,5 +14,5 @@ for p in gone:
     p.unlink()
 man = img / "manifest.json"
 m = json.loads(man.read_text())
-man.write_text(json.dumps({k: v for k, v in m.items() if k in used}, indent=0, sort_keys=True))
+man.write_text(json.dumps({k: v for k, v in m.items() if k in used}, indent=0, sort_keys=True), newline="\n")
 print(f"{len(used)} IDs in use, {len(gone)} images pruned")

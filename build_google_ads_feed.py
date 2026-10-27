@@ -135,7 +135,7 @@ def main():
                         f"{p:.2f} {cur}", f"{s:.2f} {cur}" if on_sale else "",
                         m["fmt"](p), m["fmt"](s) if on_sale else ""])
 
-    man_path.write_text(json.dumps(manifest, indent=0, sort_keys=True))
+    man_path.write_text(json.dumps(manifest, indent=0, sort_keys=True), newline="\n")
     if len(outrows) < m["min_rows"]:
         raise SystemExit(f"Only {len(outrows)} products - output NOT written")
     with open(out, "w", newline="", encoding="utf-8") as f:
