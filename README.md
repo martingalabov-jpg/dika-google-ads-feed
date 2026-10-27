@@ -14,13 +14,17 @@ The catalogue number is the store: 1000 = BG, 3000 = RO, 5000 = FR (5000 also ha
 
     python3 build_google_ads_feed.py <ro|fr> <meta.csv> <out.csv>
 
-- **One row per product.** The Meta feed has one row per size. All sizes share the product page and price, so rows are grouped on `item_group_id`.
-- **ID** is `item_group_id` lowercased, with the hyphens removed. Google Ads IDs are letters and digits only. For example, `61137-82679-00000-000-1` becomes `61137826790000000001`. **The Google tag must send exactly this value** as `items[].id` on `view_item`, `add_to_cart` and `purchase`. In GTM, take the last five hyphen-separated parts of the product URL slug and join them.
+- **One row per size, with the Meta size `id` as ID** (e.g. `5000004468672`), because that is what the sites' Google tag (`AW-18040592018`, hard-coded in the site, not in GTM) sends in `items[].item_id`:
+  - `view_item` sends the smallest size when the product page loads, and then the size that was clicked.
+  - `add_to_cart` sends the chosen size.
+
+  This was checked live on dikastore.ro and dika.com/fr on 2026-10-27. All sizes of a product share the title, page, image and price.
 - **Item title / Item description**: Google allows 25 characters each. The product name loses "de damă" / "femme", is cut at a word boundary, and never ends on a preposition or a word like "culoare" / "couleur". The rest of the name goes into Item description.
 - **Item category**: derived from the product name (Paltoane / Manteaux, Rochii / Robes, ...). The Meta `custom_label_2` is "Unknown" for most rows.
 - **Price / Sale price**: `409.00 RON`. Sale price is filled only when it is lower than Price. **Formatted price** is `409 lei` / `1.039 lei` (RO) and `90 €` (FR).
-- **Image URL**: `images/<ID>.jpg` in this repo. Google Ads accepts only PNG, JPG and GIF, and DiKa's CDN serves WebP only. So the first product photo is converted to an 800x800 white-padded JPG with an sRGB ICC profile. It is converted once and redone only when the source image URL changes (`images/manifest.json`). RO and FR share the images.
-- A feed is not written if its currency is wrong or it has too few products (RO under 300, FR under 150).
+- **Image URL**: `images/<item_group_id without hyphens>.jpg` in this repo, with one image per product that all its sizes share. Google Ads accepts only PNG, JPG and GIF, and DiKa's CDN serves WebP only. So the first product photo is converted to an 800x800 white-padded JPG with an sRGB ICC profile. It is converted once and redone only when the source image URL changes (`images/manifest.json`). RO and FR share the images.
+- A feed is not written if its currency is wrong, it has too few products (RO under 300, FR under 150), or two rows share an ID.
+- The tag sends no `google_business_vertical`. Google recommends `'custom'` for Custom feeds. Adding it needs DiKa's web developer, because the tag is in the site code, not in GTM.
 
 `prune_images.py` deletes images that no feed uses any more.
 

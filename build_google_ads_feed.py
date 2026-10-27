@@ -1,11 +1,13 @@
 """DiKa Meta catalogue CSV -> Google Ads custom feed (Business data > Dynamic display ad feeds, no Merchant Center).
-The Meta feed has one row per size; Google Ads gets one row per product (item_group_id), because the product page
-and price are shared by all sizes. Columns follow the Google Ads Custom feed template:
-  ID                  item_group_id without hyphens (letters and digits only, lowercase), e.g. 61137826790000000001
+One row per size, like the Meta feed, because the sites' Google tag sends the size id in items[].item_id
+(view_item: smallest size on load, then the size clicked; add_to_cart: the chosen size). All sizes of a product share
+title, page, image and price. Columns follow the Google Ads Custom feed template:
+  ID                  the Meta size id, e.g. 5000004468672 (must equal what the tag sends)
   Item title          the product name shortened to 25 characters ("de damă" / "femme" dropped, cut at a word)
   Item description    the rest of the name, 25 characters max
   Final URL, Item category, Price / Sale price (e.g. "409.00 RON"), Formatted price / Formatted sale price
-  Image URL           images/<ID>.jpg in this repo: the first product photo, WebP converted to an 800x800 sRGB JPG
+  Image URL           images/<item_group_id without hyphens>.jpg in this repo, shared by all sizes: the first product
+                      photo, WebP converted to an 800x800 sRGB JPG
                       (Google Ads takes PNG/JPG/GIF only and DiKa's CDN serves WebP only)
 Sale price is left empty unless it is lower than Price.
 Usage: python3 build_google_ads_feed.py <market> <meta.csv> <out.csv>     market = ro | fr"""
@@ -115,34 +117,40 @@ def main():
     for r in rows:
         if r["availability"].strip().lower() != "in stock":
             continue
-        products.setdefault(r["item_group_id"], r)
+        products.setdefault(r["item_group_id"], []).append(r)
 
     header = ["ID", "Item title", "Item description", "Final URL", "Image URL", "Item category",
               "Price", "Sale price", "Formatted price", "Formatted sale price"]
-    outrows, no_img = [], 0
-    for gid, r in products.items():
-        pid = re.sub(r"[^0-9a-z]", "", gid.lower())
-        p, cur = money(r["price"])
-        if cur != m["currency"]:
-            raise SystemExit(f"Unexpected currency {cur} for {gid} - output NOT written")
-        s = money(r["sale_price"])[0] if r["sale_price"].strip() else 0
-        on_sale = 0 < s < p
-        if not ensure_image(pid, r["image_link"], img_dir, manifest):
+    outrows, written, no_img = [], 0, 0
+    for gid, sizes in products.items():
+        pid = re.sub(r"[^0-9a-z]", "", gid.lower())  # image file name: one image per product
+        first = sizes[0]
+        if not ensure_image(pid, first["image_link"], img_dir, manifest):
             no_img += 1
             continue
-        title, desc = split_title(r["title"], m)
-        outrows.append([pid, title, desc, r["link"], RAW + f"{pid}.jpg", category(r["title"], mkt),
-                        f"{p:.2f} {cur}", f"{s:.2f} {cur}" if on_sale else "",
-                        m["fmt"](p), m["fmt"](s) if on_sale else ""])
+        title, desc = split_title(first["title"], m)
+        cat = category(first["title"], mkt)
+        for r in sizes:  # one row per size: the site tag sends the size id (smallest size on view, chosen size on add to cart)
+            p, cur = money(r["price"])
+            if cur != m["currency"]:
+                raise SystemExit(f"Unexpected currency {cur} for {gid} - output NOT written")
+            s = money(r["sale_price"])[0] if r["sale_price"].strip() else 0
+            on_sale = 0 < s < p
+            outrows.append([re.sub(r"[^0-9a-z]", "", r["id"].lower()), title, desc, r["link"], RAW + f"{pid}.jpg", cat,
+                            f"{p:.2f} {cur}", f"{s:.2f} {cur}" if on_sale else "",
+                            m["fmt"](p), m["fmt"](s) if on_sale else ""])
+        written += 1
 
     man_path.write_text(json.dumps(manifest, indent=0, sort_keys=True), newline="\n")
-    if len(outrows) < m["min_rows"]:
-        raise SystemExit(f"Only {len(outrows)} products - output NOT written")
+    if written < m["min_rows"]:
+        raise SystemExit(f"Only {written} products - output NOT written")
+    if len({r[0] for r in outrows}) != len(outrows):
+        raise SystemExit("Duplicate size IDs - output NOT written")
     with open(out, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(header)
         w.writerows(sorted(outrows))
-    print(f"{mkt}: {len(rows)} size rows -> {len(products)} products -> {len(outrows)} written ({no_img} without image)")
+    print(f"{mkt}: {len(rows)} size rows -> {written} products -> {len(outrows)} rows written ({no_img} products without image)")
 
 
 if __name__ == "__main__":
