@@ -1,0 +1,44 @@
+name: Refresh DiKa Google Ads feeds
+on:
+  schedule:
+    - cron: "15 */6 * * *"   # every 6 h at :15 UTC (00/06/12/18); GitHub often starts scheduled runs late
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency:
+  group: refresh-feed
+  cancel-in-progress: false
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet pillow==11.3.0
+      - name: Download the Meta catalogues
+        run: |
+          get() {
+            curl -sSf --retry 3 --retry-delay 20 -A "Mozilla/5.0" -o "$1" "$2"
+            head -1 "$1" | grep -q '^id,title,description' || { echo "$1 is not the catalogue CSV"; head -c 500 "$1"; exit 1; }
+          }
+          get source-ro.csv https://images.dika.com/catalogues/3000/meta-pixel/general-ro.csv
+          get source-fr.csv https://images.dika.com/catalogues/5000/meta-pixel/general-fr.csv
+      - name: Build feeds (each refuses to write if too few products)
+        run: |
+          python build_google_ads_feed.py ro source-ro.csv dika-ro-google-ads-feed.csv
+          python build_google_ads_feed.py fr source-fr.csv dika-fr-google-ads-feed.csv
+      - name: Prune images no feed uses
+        run: python prune_images.py dika-ro-google-ads-feed.csv dika-fr-google-ads-feed.csv
+      - name: Record run (keeps the schedule alive; GitHub pauses scheduled jobs after 60 days without commits)
+        run: date -u +"%Y-%m-%dT%H:%M:%SZ" > last_run.txt
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A images dika-ro-google-ads-feed.csv dika-fr-google-ads-feed.csv last_run.txt
+          git commit -m "Refresh feeds $(date -u +'%F %H:%M UTC')" || echo "nothing to commit"
+          git pull --rebase -X theirs origin main
+          git push
