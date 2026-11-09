@@ -28,6 +28,25 @@ The catalogue number is the store: 1000 = BG, 3000 = RO, 5000 = FR (5000 also ha
 
 `prune_images.py` deletes images that no feed uses any more.
 
+## Merchant Center feeds (separate from the Google Ads feeds)
+
+Merchant Center does not read the Google Ads custom-feed columns (`ID`, `Item title`, `Final URL` …), so it gets its own
+files. The Google Ads feeds above are not changed by this.
+
+    python3 build_merchant_feed.py <ro|fr> <meta.csv> <out.tsv>
+
+| Market | Merchant Center account | Feed (raw URL for the scheduled fetch) |
+|---|---|---|
+| FR, dika.com | Dika.com `5889610493` | `https://raw.githubusercontent.com/martingalabov-jpg/dika-google-ads-feed/main/dika-fr-merchant-feed.tsv` |
+| RO, dikastore.ro | `5753407031` | `https://raw.githubusercontent.com/martingalabov-jpg/dika-google-ads-feed/main/dika-ro-merchant-feed.tsv` |
+
+- Tab-separated, Google attribute names, one row per size; `id` = the Meta size id (same as the Google Ads feed and the site tag), grouped by `item_group_id`.
+- Full catalogue `title` / `description` (no 25-character cut), the catalogue's own WebP `image_link` (Merchant Center accepts WebP).
+- `gender` = female, `age_group` = adult, `color`, `size`, `size_system` (FR / EU on numeric sizes): required for apparel in FR and RO.
+- `identifier_exists` = no (DiKa's own brand, no GTINs). `google_product_category` = a numeric taxonomy id picked from the product name. `product_type` = the local category used in the Google Ads feed.
+- `sale_price` only when lower than `price`. Gift cards are left out. Same safety floors as the Google Ads build (too few products, duplicate ids, wrong currency → not written).
+- Shipping and returns are set in Merchant Center (account level), not in the feed.
+
 ## Refresh
 
 The GitHub Actions workflow `.github/workflows/refresh-feed.yml` runs every 6 hours at :15 UTC, and can also be started by hand. A download that is not the catalogue CSV, or a build below the product floor, stops the run without publishing.
